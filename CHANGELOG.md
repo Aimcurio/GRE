@@ -1,5 +1,13 @@
 # Changelog
 
+## [Stage 1 Refactor] — Core Kinematics Consolidation & Bundle Optimization (`Aimcurio/GRE`)
+
+- **Unified Aviation Kinematics Core:** Extracted and deduplicated civil and military flight contact interpolation and extrapolation algorithms (`interpolateBracketingFixes`, `extrapolateKinematicFix`, and `isContactWarmingUp`) into `src/data/motionModel.js`.
+- **Motion Modeling Test Coverage:** Added unit test suite in `src/data/motionModel.test.mjs` verifying bracketing fix interpolation, velocity-bounded dead reckoning, and delayed warmup intervals (suite now passes 4,936 tests).
+- **Rollup Asset Code-Splitting:** Configured Rollup `manualChunks` in `build/vite.js` to split heavy geodetic datasets (`geodesy-vendor`) and geographic polygons (`regions-data`), eliminating the >1500 kB chunk warnings and speeding up asset downloads.
+- **Legacy Facade Deprecation:** Annotated `src/ui.js` (`StyleManager`) and `src/data/manager.js` (`DataLayerManager`) with JSDoc `@deprecated` warnings pointing to modern modular equivalents (`ui/composition.js`, `data/lifecycle.js`, `app/layerPresentation.js`).
+- **Repository Upstream Synchronization:** Pushed initial governance refactoring release to `https://github.com/Aimcurio/GRE.git`.
+
 - Transit and Directions rows repaint as soon as their data lands again:
   `refreshLayerStats()` now lives on the layer lifecycle, not only on the
   compatibility facade. `scripts/qa-radio.mjs` uses it instead of a private

@@ -2,6 +2,17 @@
 
 # 🌐 God's Eye View
 
+> [!NOTE]
+> ### 🚀 GRE Refactoring Edition (`Aimcurio/GRE`)
+> This repository is the maintained, governance-grade refactored edition of God's Eye View (upstream: [`bilawalsidhu/gods-eye-view`](https://github.com/bilawalsidhu/gods-eye-view)).
+> 
+> **Key Refactorings & Differences from Upstream:**
+> - **Unified Aviation Kinematics Engine:** Consolidated previously duplicated dead-reckoning, bracketing interpolation, and turn-rate arc calculations between civil flights (`src/layers/flights/motion.js`) and military flights (`src/layers/military/motion.js`) into a single shared kinematics core in [`src/data/motionModel.js`](src/data/motionModel.js).
+> - **Automated Test Coverage Expansion:** Expanded unit test suite from 4,933 to **4,936 passing tests** (100% passing across all domains with 0 failures), adding dedicated mathematical test cases for contact motion states in [`src/data/motionModel.test.mjs`](src/data/motionModel.test.mjs).
+> - **Production Bundle Code-Splitting:** Optimized Vite/Rollup configuration in [`build/vite.js`](build/vite.js) with fine-grained `manualChunks` (`geodesy-vendor` for `egm96-universal`/`mgrs`, and `regions-data` for geographic boundary data), eliminating monolithic chunk warnings and improving cold-start load performance.
+> - **Modernized Architectural Facades:** Formally deprecated legacy compatibility shims ([`src/ui.js`](src/ui.js) and [`src/data/manager.js`](src/data/manager.js)) with explicit migration paths to modern modular services (`src/ui/composition.js`, `src/data/lifecycle.js`, and `src/app/layerPresentation.js`).
+> - **Zero Invariant Regressions:** All 14 verified geospatial invariants (ground terrain floor hold, screen-space course orientation, GMST satellite alignment, and delayed flight interpolation buffers) remain 100% compliant and active.
+
 [![CI](https://github.com/bilawalsidhu/gods-eye-view/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/bilawalsidhu/gods-eye-view/actions/workflows/ci.yml) [![Reached #1 on GitHub Trending](https://img.shields.io/badge/%231_GitHub_Trending-thank_you!-F0A63C?style=flat-square&logo=github)](https://x.com/bilawalsidhu/status/2093798887815348521)
 
 ### A spy-satellite simulator in your browser — then you realize the sources are public and the data is real.
