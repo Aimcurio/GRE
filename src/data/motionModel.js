@@ -500,3 +500,118 @@ export function synthesizeForwardKinematicsFix(newest, next = {}) {
     track: Number.isFinite(next.track) ? next.track : previousTrack,
   };
 }
+
+/**
+ * Dead-reckon an aircraft fix along its velocity and track by `dt` seconds,
+ * integrating a constant-rate-turn arc in local ENU frame.
+ */
+export function extrapolateKinematicFix({
+  fix,
+  info,
+  dt,
+  out,
+  turnRateDps = 0,
+  scratchArc,
+  scratchOffset,
+  scratchEnu,
+  courseHoldSpeedMps = COURSE_HOLD_SPEED_MPS,
+}) {
+  const speed = Number.isFinite(fix?.velocity)
+    ? fix.velocity
+    : (info && (info.speedMps ?? info.velocity)) || 0;
+  const heading = Number.isFinite(fix?.track)
+    ? fix.track
+    : (info && (info.track ?? info.true_track)) || 0;
+  const courseHold = speed < courseHoldSpeedMps;
+  const target = out || new Cesium.Cartesian3();
+
+  if (speed === 0 || dt === 0 || !fix?.position) {
+    if (fix?.position) Cesium.Cartesian3.clone(fix.position, target);
+    return {
+      position: target,
+      speedMps: speed,
+      courseDeg: heading,
+      courseHold,
+    };
+  }
+
+  const arc = scratchArc || {};
+  arcOffsetEnu(speed, heading, turnRateDps, dt, arc);
+  const offset = scratchOffset || new Cesium.Cartesian3();
+  Cesium.Cartesian3.fromElements(arc.east, arc.north, 0, offset);
+  const enu = Cesium.Transforms.eastNorthUpToFixedFrame(
+    fix.position,
+    Cesium.Ellipsoid.WGS84,
+    scratchEnu || new Cesium.Matrix4(),
+  );
+  Cesium.Matrix4.multiplyByPoint(enu, offset, target);
+  return {
+    position: target,
+    speedMps: speed,
+    courseDeg: arc.endCourseDeg,
+    courseHold,
+  };
+}
+
+/**
+ * Check whether a delayed display time predates available contact history.
+ */
+export function isContactWarmingUp(history, renderTime) {
+  if (!history || history.length === 0) return true;
+  return Cesium.JulianDate.lessThan(renderTime, history[0].time);
+}
+
+/**
+ * Interpolate aircraft position and course between two bracketing fixes in history.
+ */
+export function interpolateBracketingFixes({
+  history,
+  renderTime,
+  info,
+  out,
+  courseHoldSpeedMps = COURSE_HOLD_SPEED_MPS,
+}) {
+  if (!history || history.length < 2) return null;
+  for (let i = history.length - 1; i >= 1; i--) {
+    const a = history[i - 1];
+    const b = history[i];
+    if (
+      Cesium.JulianDate.lessThanOrEquals(a.time, renderTime) &&
+      Cesium.JulianDate.lessThanOrEquals(renderTime, b.time)
+    ) {
+      const span = Cesium.JulianDate.secondsDifference(b.time, a.time);
+      const t =
+        span > 0
+          ? Cesium.JulianDate.secondsDifference(renderTime, a.time) / span
+          : 1.0;
+      const chordLenM = Cesium.Cartesian3.distance(a.position, b.position);
+      const fallbackSpeed = (info && (info.speedMps ?? info.velocity)) || 0;
+      const segSpeed = span > 0 ? chordLenM / span : fallbackSpeed;
+      const fallbackTrack = (info && (info.track ?? info.true_track)) || 0;
+      const trackFrom = Number.isFinite(a.track) ? a.track : fallbackTrack;
+      const trackTo = Number.isFinite(b.track) ? b.track : trackFrom;
+      const trackCourse = lerpAngleDeg(trackFrom, trackTo, t);
+      const w = info && info.klass === 'helicopter' ? 0 : speedRamp(segSpeed);
+      const chordCourse =
+        w > 0 ? courseBetweenCartesians(a.position, b.position) : null;
+      const courseDeg =
+        chordCourse != null
+          ? lerpAngleDeg(trackCourse, chordCourse, w)
+          : trackCourse;
+      const position = Cesium.Cartesian3.lerp(
+        a.position,
+        b.position,
+        t,
+        out || new Cesium.Cartesian3(),
+      );
+      return {
+        position,
+        courseDeg,
+        speedMps: segSpeed,
+        courseHold: segSpeed < courseHoldSpeedMps,
+        matched: true,
+      };
+    }
+  }
+  return null;
+}

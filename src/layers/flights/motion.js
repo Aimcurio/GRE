@@ -9,6 +9,9 @@ import {
   courseSlewCapDps,
   limitCourseStep,
   corridorPathLatLon,
+  interpolateBracketingFixes,
+  extrapolateKinematicFix,
+  isContactWarmingUp,
 } from '../../data/motionModel.js';
 import { CLASS_SCALE_2D } from '../../data/aircraftClass.js';
 import {
@@ -156,45 +159,19 @@ export function createMotion({
     );
 
     // Bracketing pair: interpolate — no extrapolation error, no snap-back.
-    for (let i = history.length - 1; i >= 1; i--) {
-      const a = history[i - 1];
-      const b = history[i];
-      if (
-        Cesium.JulianDate.lessThanOrEquals(a.time, renderTime) &&
-        Cesium.JulianDate.lessThanOrEquals(renderTime, b.time)
-      ) {
-        const span = Cesium.JulianDate.secondsDifference(b.time, a.time);
-        const t =
-          span > 0
-            ? Cesium.JulianDate.secondsDifference(renderTime, a.time) / span
-            : 1.0;
-        // Course of the DISPLAYED motion. The chord is only trustworthy when the
-        // segment covers real ground (at hover its direction is GPS jitter; on a
-        // slow tight turn it STEPS the whole per-segment turn at each boundary),
-        // so it is blended against the reported per-fix track by displayed
-        // ground speed — and the track is TIME-INTERPOLATED between the fixes so
-        // a slow turner's nose advances continuously through the segment instead
-        // of snapping once per poll. Helicopters always use the reported track
-        // (rotorcraft chords are noise-dominated at their typical speeds).
-        const chordLenM = Cesium.Cartesian3.distance(a.position, b.position);
-        const segSpeed =
-          span > 0 ? chordLenM / span : (info && info.velocity) || 0;
-        const fallbackTrack = (info && info.true_track) || 0;
-        const trackFrom = Number.isFinite(a.track) ? a.track : fallbackTrack;
-        const trackTo = Number.isFinite(b.track) ? b.track : trackFrom;
-        const trackCourse = lerpAngleDeg(trackFrom, trackTo, t);
-        const w = info && info.klass === 'helicopter' ? 0 : speedRamp(segSpeed);
-        const chordCourse =
-          w > 0 ? courseBetweenCartesians(a.position, b.position) : null;
-        flightState._drCourseDeg =
-          chordCourse != null
-            ? lerpAngleDeg(trackCourse, chordCourse, w)
-            : trackCourse;
-        flightState._drSpeedMps = segSpeed;
-        flightState._drCourseHold = segSpeed < COURSE_HOLD_SPEED_MPS;
-        flightState._drExtrapolating = false;
-        return Cesium.Cartesian3.lerp(a.position, b.position, t, out);
-      }
+    const bracket = interpolateBracketingFixes({
+      history,
+      renderTime,
+      info,
+      out,
+      courseHoldSpeedMps: COURSE_HOLD_SPEED_MPS,
+    });
+    if (bracket) {
+      flightState._drCourseDeg = bracket.courseDeg;
+      flightState._drSpeedMps = bracket.speedMps;
+      flightState._drCourseHold = bracket.courseHold;
+      flightState._drExtrapolating = false;
+      return bracket.position;
     }
 
     const newest = history[history.length - 1];
@@ -254,44 +231,25 @@ export function createMotion({
   /**
    * Dead-reckon a fix along its own velocity/track by `dt` seconds, integrating a
    * constant-rate-turn arc when `turnRateDps` is significant (straight line
-   * otherwise). Positive `dt` projects FORWARD (after the fix); negative `dt`
-   * projects BACKWARD (before the fix) — used for warm-up, estimating where the
-   * aircraft was before its first observed fix. ENU frame: east = +X, north = +Y,
-   * up = +Z; heading 0 deg = north, 90 deg = east. Sets `_drCourseDeg` to the
-   * arc's instantaneous end course on every path.
-   * Arc math adapted from skylight (https://github.com/cpaczek/skylight, MIT).
+   * otherwise).
    */
-
   function _extrapolateFix(fix, info, dt, out, turnRateDps = 0) {
-    const speed = Number.isFinite(fix.velocity)
-      ? fix.velocity
-      : (info && info.velocity) || 0;
-    const heading = Number.isFinite(fix.track)
-      ? fix.track
-      : (info && info.true_track) || 0;
-    flightState._drSpeedMps = speed;
-    flightState._drCourseHold = speed < COURSE_HOLD_SPEED_MPS;
+    const extrapolated = extrapolateKinematicFix({
+      fix,
+      info,
+      dt,
+      out,
+      turnRateDps,
+      scratchArc: flightState._scratchArc,
+      scratchOffset: flightState._scratchOffset,
+      scratchEnu: flightState._scratchEnu,
+      courseHoldSpeedMps: COURSE_HOLD_SPEED_MPS,
+    });
+    flightState._drSpeedMps = extrapolated.speedMps;
+    flightState._drCourseHold = extrapolated.courseHold;
+    flightState._drCourseDeg = extrapolated.courseDeg;
     flightState._drExtrapolating = true;
-    if (speed === 0 || dt === 0) {
-      flightState._drCourseDeg = heading;
-      return Cesium.Cartesian3.clone(fix.position, out);
-    }
-    // Constant-rate-turn arc (straight line when turnRateDps ≈ 0) — a plane in a
-    // standard-rate turn is ~90° of arc wrong per 30 s if extrapolated straight.
-    arcOffsetEnu(speed, heading, turnRateDps, dt, flightState._scratchArc);
-    flightState._drCourseDeg = flightState._scratchArc.endCourseDeg;
-    Cesium.Cartesian3.fromElements(
-      flightState._scratchArc.east,
-      flightState._scratchArc.north,
-      0,
-      flightState._scratchOffset,
-    );
-    const enu = Cesium.Transforms.eastNorthUpToFixedFrame(
-      fix.position,
-      Cesium.Ellipsoid.WGS84,
-      flightState._scratchEnu,
-    );
-    return Cesium.Matrix4.multiplyByPoint(enu, flightState._scratchOffset, out);
+    return extrapolated.position;
   }
 
   /**
@@ -301,17 +259,15 @@ export function createMotion({
    * this window (every accumulated point is ahead of the icon).
    * @returns {boolean}
    */
-
   function _isTrackWarmingUp() {
     if (!flightState._trackedIcao) return false;
     const history = flightState._positionHistory.get(flightState._trackedIcao);
-    if (!history || history.length === 0) return true;
     const renderTime = Cesium.JulianDate.addSeconds(
       Cesium.JulianDate.now(),
       -RENDER_DELAY_SEC,
       flightState._scratchWarmupTime,
     );
-    return Cesium.JulianDate.lessThan(renderTime, history[0].time);
+    return isContactWarmingUp(history, renderTime);
   }
 
   /** Resolve the selected aircraft's actual rendered square extent this frame. */

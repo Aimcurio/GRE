@@ -9,6 +9,7 @@ import {
   speedRamp, lerpAngleDeg, courseSlewCapDps, displayedKinematics, staleCoastLimitSeconds,
   liftRepeatedGroundFix, synthesizeForwardKinematicsFix,
   projectGroundArcLatLon, corridorPathLatLon,
+  interpolateBracketingFixes, extrapolateKinematicFix, isContactWarmingUp,
   COURSE_TRACK_ONLY_MPS, COURSE_CHORD_ONLY_MPS, COURSE_MIN_DPS, TURN_MIN_SPEED_MPS,
 } from './motionModel.js';
 
@@ -340,4 +341,49 @@ test('corridorPathLatLon returns nothing without a display position', () => {
   assert.deepEqual(corridorPathLatLon({
     extrapolating: true, displayLat: NaN, displayLon: -97.66, courseDeg: 0, speedMps: 10, lookaheadSec: 60,
   }), []);
+});
+
+test('interpolateBracketingFixes blends bracketed history positions and courses', () => {
+  const t0 = Cesium.JulianDate.fromDate(new Date('2026-01-01T00:00:00Z'));
+  const t1 = Cesium.JulianDate.fromDate(new Date('2026-01-01T00:00:30Z'));
+  const p0 = Cesium.Cartesian3.fromDegrees(-97.74, 30.26, 1000);
+  const p1 = Cesium.Cartesian3.fromDegrees(-97.73, 30.26, 1000);
+  const history = [
+    { time: t0, position: p0, track: 90 },
+    { time: t1, position: p1, track: 90 },
+  ];
+  const midTime = Cesium.JulianDate.fromDate(new Date('2026-01-01T00:00:15Z'));
+  const bracket = interpolateBracketingFixes({
+    history,
+    renderTime: midTime,
+    info: { speedMps: 30, track: 90 },
+  });
+  assert.ok(bracket, 'finds bracketing fix');
+  assert.equal(bracket.matched, true);
+  assert.ok(bracket.speedMps > 0);
+  assert.equal(bracket.courseHold, false);
+});
+
+test('extrapolateKinematicFix projects position along track and respects stationary hold', () => {
+  const p0 = Cesium.Cartesian3.fromDegrees(-97.74, 30.26, 1000);
+  const fix = { position: p0, velocity: 0, track: 45 };
+  const stationary = extrapolateKinematicFix({ fix, dt: 10 });
+  assert.equal(stationary.courseHold, true);
+  assert.equal(stationary.speedMps, 0);
+
+  const movingFix = { position: p0, velocity: 100, track: 90 };
+  const moving = extrapolateKinematicFix({ fix: movingFix, dt: 10 });
+  assert.equal(moving.courseHold, false);
+  assert.equal(moving.speedMps, 100);
+  assert.ok(moving.position.x !== p0.x || moving.position.y !== p0.y);
+});
+
+test('isContactWarmingUp identifies when delayed time predates history', () => {
+  const t0 = Cesium.JulianDate.fromDate(new Date('2026-01-01T00:01:00Z'));
+  const history = [{ time: t0 }];
+  const beforeT0 = Cesium.JulianDate.fromDate(new Date('2026-01-01T00:00:30Z'));
+  const afterT0 = Cesium.JulianDate.fromDate(new Date('2026-01-01T00:01:30Z'));
+  assert.equal(isContactWarmingUp([], beforeT0), true);
+  assert.equal(isContactWarmingUp(history, beforeT0), true);
+  assert.equal(isContactWarmingUp(history, afterT0), false);
 });

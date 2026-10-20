@@ -1,7 +1,11 @@
 import { StyleManager as ApplicationControls } from './ui/composition.js';
 import { catalogControlServices } from './app/catalog.js';
 import { getStandaloneCatalog } from './standalone/catalog.js';
-/** Compatibility entry for direct standalone control construction. */
+
+/**
+ * @deprecated Use `ApplicationControls` from `./ui/composition.js` directly.
+ * Historical compatibility entry for direct standalone control construction.
+ */
 export class StyleManager extends ApplicationControls {
   constructor(viewer, options = {}) {
     super(viewer, {

@@ -2,7 +2,11 @@ import { LayerLifecycle } from './lifecycle.js';
 import { LayerPresentation } from '../app/layerPresentation.js';
 export { layerFeedState } from '../ui/layers.js';
 
-/** Compatibility facade for callers that construct a manager with its panel. */
+/**
+ * @deprecated Use `LayerLifecycle` from `./lifecycle.js` and `LayerPresentation`
+ * from `../app/layerPresentation.js` directly.
+ * Historical compatibility facade for callers that construct a manager with its panel.
+ */
 export class DataLayerManager extends LayerLifecycle {
   constructor(viewer, options) {
     super(viewer, options);

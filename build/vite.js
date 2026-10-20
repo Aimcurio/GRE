@@ -48,6 +48,28 @@ export function createBrowserViteConfig({
       'import.meta.env.GOOGLE_MAPS_API_KEY': JSON.stringify(googleApiKey),
       'import.meta.env.CESIUM_ION_TOKEN': JSON.stringify(cesiumToken),
     },
-    build: { chunkSizeWarningLimit: 1500 },
+    build: {
+      chunkSizeWarningLimit: 2800,
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (
+              id.includes('node_modules/egm96-universal/') ||
+              id.includes('node_modules\\egm96-universal\\') ||
+              id.includes('node_modules/mgrs/') ||
+              id.includes('node_modules\\mgrs\\')
+            ) {
+              return 'geodesy-vendor';
+            }
+            if (
+              id.includes('regions.js') ||
+              id.includes('naturalEarthRegions.js')
+            ) {
+              return 'regions-data';
+            }
+          },
+        },
+      },
+    },
   };
 }
