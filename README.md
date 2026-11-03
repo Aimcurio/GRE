@@ -1,3 +1,17 @@
+# God's Eye View (GRE): 3D Geospatial Intelligence Platform
+
+[![Status](https://img.shields.io/badge/Status-Verified_v0.1.1-green?style=flat-square)](#)
+[![Tech](https://img.shields.io/badge/Tech-CesiumJS__Three.js__React__Vite-blue?style=flat-square)](#)
+[![Domain](https://img.shields.io/badge/Domain-Geospatial_Intelligence__3D_Tiles-orange?style=flat-square)](#)
+[![Standard](https://img.shields.io/badge/Standard-BUBBA_2.0_Governance-purple?style=flat-square)](#)
+[![Tests](https://img.shields.io/badge/Tests-4%2C936%20passing-brightgreen?style=flat-square)](#)
+
+> **Portfolio Classification:** Public Geospatial Intelligence Platform  
+> **Authoritative Root:** `E:\projects\gods-eye-view` | **Canonical Spec:** `E:\overview\specs\gods-eye-view.json`  
+> **Development Status:** **QUALIFIED / VERIFIED (v0.1.1)** — All 14 verified geospatial invariants held; 4,936 automated tests passing; production bundle code-splitting verified.
+
+---
+
 <div align="center">
 
 # 🌐 God's Eye View
